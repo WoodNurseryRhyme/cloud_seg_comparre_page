@@ -169,15 +169,31 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      touch-action: none; /* 允许我们接管滚轮/拖拽 */
     }
-    .lb-img {
-      max-width: 100%;
-      max-height: 100%;
+
+    /* 大图：用 CSS 变量控制缩放/平移 */
+    .lb-img{
+      --tx: 0px;
+      --ty: 0px;
+      --s: 1;
+
+      max-width: none;
+      max-height: none;
       object-fit: contain;
-      cursor: zoom-out;
+
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(var(--s));
+      transform-origin: center center;
+
       user-select: none;
       -webkit-user-drag: none;
+      cursor: grab;
     }
+    .lb-stage.grabbing .lb-img { cursor: grabbing; }
+
     .lb-bottom {
       display: flex;
       justify-content: center;
@@ -3088,6 +3104,11 @@
     <div class="lb-top">
       <div class="lb-title" id="lb-title"></div>
       <div class="lb-actions">
+        <button class="lb-btn" id="lb-zoomout" type="button">−</button>
+        <button class="lb-btn" id="lb-zoomin" type="button">+</button>
+        <button class="lb-btn" id="lb-fit" type="button">适配</button>
+        <button class="lb-btn" id="lb-actual" type="button">1:1</button>
+
         <button class="lb-btn" id="lb-prev" type="button">← 上一张</button>
         <button class="lb-btn" id="lb-next" type="button">下一张 →</button>
         <button class="lb-btn" id="lb-close" type="button">关闭 (Esc)</button>
@@ -3099,7 +3120,7 @@
     </div>
 
     <div class="lb-bottom">
-      <div class="lb-hint">提示：左右方向键切换，Esc 关闭，点击图片/黑色背景关闭</div>
+      <div class="lb-hint">提示：滚轮缩放，拖拽平移，双击适配/1:1，左右键切换，Esc 关闭，点击黑色背景关闭</div>
     </div>
   </div>
 </div>
@@ -3110,19 +3131,107 @@
   const lightbox = document.getElementById('lightbox');
   const imgEl = document.getElementById('lb-img');
   const titleEl = document.getElementById('lb-title');
+
   const btnClose = document.getElementById('lb-close');
   const btnPrev = document.getElementById('lb-prev');
   const btnNext = document.getElementById('lb-next');
   const backdrop = document.getElementById('lb-backdrop');
 
+  const btnZoomIn = document.getElementById('lb-zoomin');
+  const btnZoomOut = document.getElementById('lb-zoomout');
+  const btnFit = document.getElementById('lb-fit');
+  const btnActual = document.getElementById('lb-actual');
+
+  const stageEl = document.querySelector('.lb-stage');
+
   let idx = -1;
 
+  // ===== Zoom/Pan state =====
+  let scale = 1;
+  let tx = 0;
+  let ty = 0;
+  let fitScale = 1;
+  let userInteracted = false;
+
+  const MIN_SCALE = 0.05;
+  const MAX_SCALE = 16;
+
+  function applyTransform() {
+    imgEl.style.setProperty('--s', String(scale));
+    imgEl.style.setProperty('--tx', `${tx}px`);
+    imgEl.style.setProperty('--ty', `${ty}px`);
+  }
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  function fitToStage() {
+    const iw = imgEl.naturalWidth || 1;
+    const ih = imgEl.naturalHeight || 1;
+
+    const sw = stageEl.clientWidth || 1;
+    const sh = stageEl.clientHeight || 1;
+
+    fitScale = Math.min(sw / iw, sh / ih);
+    fitScale = clamp(fitScale, MIN_SCALE, MAX_SCALE);
+
+    scale = fitScale;
+    tx = 0;
+    ty = 0;
+    userInteracted = false;
+    applyTransform();
+  }
+
+  function setActual() {
+    scale = 1;
+    tx = 0;
+    ty = 0;
+    userInteracted = true;
+    applyTransform();
+  }
+
+  function zoomTo(newScale, clientX, clientY) {
+    newScale = clamp(newScale, MIN_SCALE, MAX_SCALE);
+
+    const rect = stageEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // 当前鼠标点在“图像坐标系(以图片中心为原点)”下的位置
+    const dx = (clientX - cx - tx) / scale;
+    const dy = (clientY - cy - ty) / scale;
+
+    // 更新 scale 后，反推 tx/ty，让鼠标点尽量保持不动
+    scale = newScale;
+    tx = (clientX - cx) - dx * scale;
+    ty = (clientY - cy) - dy * scale;
+
+    userInteracted = true;
+    applyTransform();
+  }
+
+  function zoomBy(factor, anchorX, anchorY) {
+    zoomTo(scale * factor, anchorX, anchorY);
+  }
+
+  function zoomAtCenter(factor) {
+    const rect = stageEl.getBoundingClientRect();
+    zoomBy(factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  // ===== Lightbox navigation =====
   function setIndex(newIdx) {
     if (!items.length) return;
     idx = (newIdx + items.length) % items.length;
+
     const el = items[idx];
     const src = el.getAttribute('data-src');
     const name = el.getAttribute('data-name') || '';
+
+    imgEl.removeAttribute('src');
+    imgEl.onload = () => {
+      fitToStage(); // 每张图打开默认适配
+    };
+
     imgEl.src = src;
     imgEl.alt = name;
     titleEl.textContent = `${idx + 1} / ${items.length}  ·  ${name}`;
@@ -3133,34 +3242,143 @@
     lightbox.classList.add('open');
     lightbox.setAttribute('aria-hidden', 'false');
     document.body.classList.add('lb-lock');
+
+    stageEl.classList.remove('grabbing');
   }
 
   function close() {
     lightbox.classList.remove('open');
     lightbox.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('lb-lock');
-    // 避免大图占用太久内存
+
     imgEl.removeAttribute('src');
+
+    scale = 1; tx = 0; ty = 0; fitScale = 1; userInteracted = false;
+    applyTransform();
+    stageEl.classList.remove('grabbing');
   }
 
   function prev() { setIndex(idx - 1); }
   function next() { setIndex(idx + 1); }
 
+  // ===== Bind card click =====
   items.forEach((el, i) => {
     el.addEventListener('click', () => openAt(i));
   });
 
+  // ===== Buttons =====
   btnClose.addEventListener('click', close);
   backdrop.addEventListener('click', close);
-  imgEl.addEventListener('click', close);
+
   btnPrev.addEventListener('click', prev);
   btnNext.addEventListener('click', next);
 
+  btnFit.addEventListener('click', fitToStage);
+  btnActual.addEventListener('click', setActual);
+  btnZoomIn.addEventListener('click', () => zoomAtCenter(1.25));
+  btnZoomOut.addEventListener('click', () => zoomAtCenter(0.8));
+
+  // ===== Wheel zoom =====
+  stageEl.addEventListener('wheel', (e) => {
+    if (!lightbox.classList.contains('open')) return;
+    e.preventDefault();
+
+    const factor = (e.deltaY > 0) ? 0.9 : 1.1;
+    zoomBy(factor, e.clientX, e.clientY);
+  }, { passive: false });
+
+  // ===== Drag to pan (Pointer Events) + 点击黑色空白关闭 =====
+  let dragging = false;
+  let startX = 0, startY = 0;
+  let startTx = 0, startTy = 0;
+
+  // 新增：拖拽判定 + 防误触关闭
+  let moved = false;
+  let lastDragAt = 0;
+
+  stageEl.addEventListener('pointerdown', (e) => {
+    if (!lightbox.classList.contains('open')) return;
+
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    startTx = tx;
+    startTy = ty;
+
+    stageEl.classList.add('grabbing');
+    stageEl.setPointerCapture(e.pointerId);
+  });
+
+  stageEl.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    // 如果移动超过阈值，认为是拖拽
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+
+    tx = startTx + dx;
+    ty = startTy + dy;
+
+    userInteracted = true;
+    applyTransform();
+  });
+
+  stageEl.addEventListener('pointerup', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    stageEl.classList.remove('grabbing');
+    try { stageEl.releasePointerCapture(e.pointerId); } catch (_) {}
+
+    // 记录拖拽结束时间，避免拖完立刻 click 触发关闭
+    if (moved) lastDragAt = Date.now();
+  });
+
+  stageEl.addEventListener('pointercancel', (e) => {
+    dragging = false;
+    stageEl.classList.remove('grabbing');
+    try { stageEl.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  // 点击 stage 的空白区域关闭（点到图片不关）
+  stageEl.addEventListener('click', (e) => {
+    if (!lightbox.classList.contains('open')) return;
+    if (Date.now() - lastDragAt < 250) return; // 刚拖完不关
+    if (e.target === stageEl) close();
+  });
+
+  // ===== Double click: toggle fit <-> 1:1 =====
+  stageEl.addEventListener('dblclick', (e) => {
+    if (!lightbox.classList.contains('open')) return;
+
+    if (Math.abs(scale - fitScale) < 1e-3) {
+      zoomTo(1, e.clientX, e.clientY); // 以双击点为锚点放到 1:1
+    } else {
+      fitToStage();
+    }
+  });
+
+  // ===== Keyboard =====
   window.addEventListener('keydown', (e) => {
     if (!lightbox.classList.contains('open')) return;
+
     if (e.key === 'Escape') close();
     else if (e.key === 'ArrowLeft') prev();
     else if (e.key === 'ArrowRight') next();
+    else if (e.key === '+' || e.key === '=') zoomAtCenter(1.25);
+    else if (e.key === '-' || e.key === '_') zoomAtCenter(0.8);
+    else if (e.key.toLowerCase() === 'f') fitToStage();
+    else if (e.key === '0') fitToStage();
+  });
+
+  // ===== Resize: 如果用户还没手动缩放/拖拽，就保持适配 =====
+  window.addEventListener('resize', () => {
+    if (!lightbox.classList.contains('open')) return;
+    if (!userInteracted && imgEl.getAttribute('src')) {
+      fitToStage();
+    }
   });
 })();
 </script>
