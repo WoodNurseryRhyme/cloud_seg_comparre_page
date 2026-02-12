@@ -1,0 +1,449 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TIFF/PNG 卷帘对比（含缩略图列表）</title>
+  <style>
+    :root { --bg:#0b0f14; --fg:#e6edf3; --muted:#9aa4af; --card:#111824; --line:#243042; }
+    * { box-sizing: border-box; }
+    body{
+      margin:0; padding:18px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC","Microsoft YaHei";
+      background: var(--bg); color: var(--fg);
+    }
+    .topbar{
+      display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+      margin-bottom: 12px;
+    }
+    .card{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    label { color: var(--muted); font-size: 13px; }
+    select, button, input{
+      background: #0f1622; color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    select, button { cursor: pointer; }
+    button:hover, select:hover, input:hover { border-color: #3a4a64; }
+    .spacer{ flex:1; }
+    .hint{ color: var(--muted); font-size: 13px; line-height: 1.4; }
+    .range{ width: 220px; }
+
+    /* layout */
+    .viewer-wrap{
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 500px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 980px){
+      .viewer-wrap{ grid-template-columns: 1fr; }
+      .sidebar{ height: 260px !important; }
+    }
+
+    /* sidebar thumbs */
+    .sidebar{
+      height: min(78vh, 900px);
+      overflow: hidden;
+      padding: 10px;
+    }
+    .side-title{
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .side-title small{ color: var(--muted); opacity: .9; }
+    .thumb-search{
+      width: 100%;
+      margin-bottom: 10px;
+      outline: none;
+    }
+    .thumb-list{
+      height: calc(100% - 26px - 46px);
+      overflow: auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      padding-right: 6px;
+    }
+    @media (max-width: 980px){
+      .thumb-list{ height: calc(100% - 26px - 46px); }
+    }
+
+    .thumb-item{
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #0f1622;
+      cursor: pointer;
+    }
+    .thumb-item:hover{ border-color:#3a4a64; }
+    .thumb-item.active{
+      border-color: rgba(255,255,255,0.65);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset;
+    }
+    .thumb-item img{
+      width: 72px;
+      height: 54px;
+      object-fit: contain;
+      border-radius: 10px;
+      background: #05070a;
+      display:block;
+    }
+    .thumb-name{
+      font-size: 13px;
+      color: var(--fg);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .thumb-sub{
+      font-size: 12px;
+      color: var(--muted);
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-top: 2px;
+    }
+
+    /* viewer */
+    .viewer{
+      position: relative;
+      width: 100%;
+      height: min(78vh, 900px);
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: #05070a;
+      user-select: none;
+      touch-action: none;
+    }
+    .layer{
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .layer img{
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      image-rendering: auto;
+      pointer-events: none;
+    }
+    .top{
+      clip-path: inset(0 calc(100% - var(--reveal)) 0 0);
+    }
+    .divider{
+      position:absolute; top:0; bottom:0;
+      left: var(--reveal);
+      width: 2px;
+      background: rgba(255,255,255,0.75);
+      transform: translateX(-1px);
+      pointer-events:none;
+    }
+    .handle{
+      position:absolute;
+      left: var(--reveal);
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 36px; height: 36px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.9);
+      color:#0b0f14;
+      display:flex; align-items:center; justify-content:center;
+      font-weight: 700;
+      pointer-events:none;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    }
+    .meta{
+      display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+      justify-content: space-between;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .kbd{ padding:2px 6px; border:1px solid var(--line); border-radius:6px; background:#0f1622; color:var(--fg); }
+    .badge{ padding:4px 8px; border:1px solid var(--line); border-radius:999px; }
+  </style>
+</head>
+
+<body>
+  <div class="topbar card">
+    <div>
+      <label>选择文件</label><br/>
+      <select id="fileSelect"></select>
+    </div>
+
+    <div>
+      <label>卷帘位置</label><br/>
+      <input id="slider" class="range" type="range" min="0" max="100" value="50"/>
+    </div>
+
+    <div>
+      <label>操作</label><br/>
+      <button id="prevBtn">上一张</button>
+      <button id="nextBtn">下一张</button>
+      <button id="swapBtn">左右互换</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="hint">
+      拖动分割线或滑块。快捷键：<span class="kbd">←</span>/<span class="kbd">→</span> 调卷帘，
+      <span class="kbd">↑</span>/<span class="kbd">↓</span> 切图，<span class="kbd">S</span> 互换
+    </div>
+  </div>
+
+  <div class="viewer-wrap">
+    <!-- Sidebar -->
+    <div class="sidebar card">
+      <div class="side-title">
+        <span>图片列表</span>
+        <small id="sideCount"></small>
+      </div>
+      <input id="thumbSearch" class="thumb-search" placeholder="搜索文件名（支持模糊）..." />
+      <div class="thumb-list" id="thumbList"></div>
+    </div>
+
+    <!-- Main -->
+    <div>
+      <div class="viewer" id="viewer" style="--reveal:50%;">
+        <div class="layer bottom"><img id="imgB" alt="B"/></div>
+        <div class="layer top"><img id="imgA" alt="A"/></div>
+        <div class="divider"></div>
+        <div class="handle">⇆</div>
+      </div>
+
+      <div class="meta card">
+        <div>
+          <span class="badge" id="leftLabel">左：Before</span>
+          <span class="badge" id="rightLabel">右：Dehazed</span>
+          <span style="margin-left:10px;" id="nameLabel"></span>
+        </div>
+        <div id="countLabel"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let manifest = null;
+let idx = 0;
+let swapped = false;
+
+const sel = document.getElementById("fileSelect");
+const slider = document.getElementById("slider");
+const viewer = document.getElementById("viewer");
+const imgA = document.getElementById("imgA");
+const imgB = document.getElementById("imgB");
+const nameLabel = document.getElementById("nameLabel");
+const countLabel = document.getElementById("countLabel");
+const leftLabel = document.getElementById("leftLabel");
+const rightLabel = document.getElementById("rightLabel");
+
+const thumbList = document.getElementById("thumbList");
+const thumbSearch = document.getElementById("thumbSearch");
+const sideCount = document.getElementById("sideCount");
+
+let filteredIndices = null; // null = no filter, otherwise array of indices
+
+function setReveal(pct){
+  pct = Math.max(0, Math.min(100, pct));
+  viewer.style.setProperty("--reveal", pct + "%");
+  slider.value = pct;
+}
+
+function loadIndex(i){
+  const list = filteredIndices ?? [...Array(manifest.items.length).keys()];
+  const n = list.length;
+  if(n === 0) return;
+
+  // i is position in filtered list
+  const pos = (i + n) % n;
+  const realIdx = list[pos];
+
+  idx = realIdx;
+  const it = manifest.items[idx];
+
+  nameLabel.textContent = it.name;
+  countLabel.textContent = `${pos+1} / ${n}（总 ${manifest.items.length}）`;
+
+  if(!swapped){
+    imgA.src = it.a;
+    imgB.src = it.b;
+    leftLabel.textContent = "左：Before";
+    rightLabel.textContent = "右：Dehazed";
+  }else{
+    imgA.src = it.b;
+    imgB.src = it.a;
+    leftLabel.textContent = "左：Dehazed";
+    rightLabel.textContent = "右：Before";
+  }
+
+  // sync select to real index
+  sel.value = String(idx);
+  setActiveThumb(idx);
+}
+
+function getCurrentPosInFiltered(){
+  const list = filteredIndices ?? [...Array(manifest.items.length).keys()];
+  const pos = list.indexOf(idx);
+  return pos >= 0 ? pos : 0;
+}
+
+function next(){
+  loadIndex(getCurrentPosInFiltered() + 1);
+}
+function prev(){
+  loadIndex(getCurrentPosInFiltered() - 1);
+}
+
+document.getElementById("nextBtn").onclick = next;
+document.getElementById("prevBtn").onclick = prev;
+document.getElementById("swapBtn").onclick = () => {
+  swapped = !swapped;
+  // reload current (keep same idx)
+  const pos = getCurrentPosInFiltered();
+  loadIndex(pos);
+};
+
+slider.addEventListener("input", (e)=> setReveal(Number(e.target.value)));
+
+function clientXToPct(clientX){
+  const r = viewer.getBoundingClientRect();
+  const x = Math.max(r.left, Math.min(r.right, clientX));
+  return ((x - r.left) / r.width) * 100;
+}
+
+let dragging = false;
+viewer.addEventListener("pointerdown", (e)=>{
+  dragging = true;
+  viewer.setPointerCapture(e.pointerId);
+  setReveal(clientXToPct(e.clientX));
+});
+viewer.addEventListener("pointermove", (e)=>{
+  if(!dragging) return;
+  setReveal(clientXToPct(e.clientX));
+});
+viewer.addEventListener("pointerup", ()=> dragging = false);
+viewer.addEventListener("pointercancel", ()=> dragging = false);
+
+document.addEventListener("keydown", (e)=>{
+  if(!manifest) return;
+  if(e.key === "ArrowRight") setReveal(Number(slider.value) + 2);
+  else if(e.key === "ArrowLeft") setReveal(Number(slider.value) - 2);
+  else if(e.key === "ArrowDown") next();
+  else if(e.key === "ArrowUp") prev();
+  else if(e.key === "s" || e.key === "S"){
+    swapped = !swapped;
+    const pos = getCurrentPosInFiltered();
+    loadIndex(pos);
+  }
+});
+
+function renderThumbs(){
+  thumbList.innerHTML = "";
+  const items = manifest.items;
+
+  sideCount.textContent = filteredIndices ? `${filteredIndices.length} / ${items.length}` : `${items.length}`;
+
+  (filteredIndices ?? [...Array(items.length).keys()]).forEach((realIdx) => {
+    const it = items[realIdx];
+    const div = document.createElement("div");
+    div.className = "thumb-item";
+    div.dataset.idx = String(realIdx);
+
+    // thumb 优先；没有就用 a
+    const thumbSrc = it.thumb ? it.thumb : it.a;
+
+    div.innerHTML = `
+      <img loading="lazy" src="${thumbSrc}" alt="${it.name}"/>
+      <div>
+        <div class="thumb-name" title="${it.name}">${it.name}</div>
+        <div class="thumb-sub">${it.thumb ? "thumb" : "A图预览"}</div>
+      </div>
+    `;
+
+    div.addEventListener("click", () => {
+      // 点击切换到该 realIdx 对应项：先算它在 filtered 里的位置
+      const list = filteredIndices ?? [...Array(items.length).keys()];
+      const pos = list.indexOf(realIdx);
+      loadIndex(pos >= 0 ? pos : 0);
+    });
+
+    thumbList.appendChild(div);
+  });
+
+  setActiveThumb(idx);
+}
+
+function setActiveThumb(realIdx){
+  const nodes = thumbList.querySelectorAll(".thumb-item");
+  nodes.forEach(n => n.classList.remove("active"));
+  const cur = thumbList.querySelector(`.thumb-item[data-idx="${realIdx}"]`);
+  if(cur){
+    cur.classList.add("active");
+    cur.scrollIntoView({block: "nearest"});
+  }
+}
+
+function applyFilter(q){
+  q = (q || "").trim().toLowerCase();
+  if(!q){
+    filteredIndices = null;
+  }else{
+    filteredIndices = manifest.items
+      .map((it, i) => ({it, i}))
+      .filter(x => x.it.name.toLowerCase().includes(q))
+      .map(x => x.i);
+  }
+  renderThumbs();
+  // 过滤后切到第一张
+  loadIndex(0);
+}
+
+thumbSearch.addEventListener("input", (e) => applyFilter(e.target.value));
+
+async function main(){
+  const resp = await fetch("manifest.json");
+  manifest = await resp.json();
+
+  // select：用真实索引
+  sel.innerHTML = "";
+  manifest.items.forEach((it, i)=>{
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = it.name;
+    sel.appendChild(opt);
+  });
+
+  sel.addEventListener("change", ()=>{
+    // 选择后切到该 realIdx 在 filtered 的位置
+    const realIdx = Number(sel.value);
+    const list = filteredIndices ?? [...Array(manifest.items.length).keys()];
+    const pos = list.indexOf(realIdx);
+    loadIndex(pos >= 0 ? pos : 0);
+  });
+
+  setReveal(50);
+  renderThumbs();
+  loadIndex(0);
+}
+main();
+</script>
+</body>
+</html>
