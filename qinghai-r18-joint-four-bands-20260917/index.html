@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>R18 联合变化 F1 四档 · 卷帘对比</title>
+  <style>
+    :root {color-scheme:light dark;font-family:system-ui,"Microsoft YaHei",sans-serif;background:light-dark(#fff,#181818);color:light-dark(#18232c,#eee);}
+    * {box-sizing:border-box;}
+    body {margin:0;}
+    header {display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:12px 16px 6px;max-width:1172px;margin:auto;}
+    h1 {font-size:18px;font-weight:500;margin:0;width:100%;}
+    select {font:inherit;padding:5px 8px;max-width:100%;min-width:0;flex:1 1 340px;}
+    button {font:inherit;padding:5px 10px;cursor:pointer;}
+    .meta {font-size:13px;padding:0 16px 8px;max-width:1172px;margin:auto;}
+    iframe {display:block;width:100%;max-width:1172px;height:calc(100vh - 132px);min-height:440px;border:0;margin:0 auto;}
+    a {color:inherit;}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>R18 联合变化 F1 · 四档各 5 张</h1>
+    <select id="sample" aria-label="选择排名与验证样本"><optgroup label="第 1 档：0–25%（共 1026 张，展示 5 张）">
+<option value="band_1_01">第 1 档 · 1/5 · 联合 0.00% · 海东_tile_000141_r0_c0_r05_c04</option>
+<option value="band_1_02">第 1 档 · 2/5 · 联合 0.00% · 西宁_tile_000037_r08_c05</option>
+<option value="band_1_03">第 1 档 · 3/5 · 联合 0.07% · 西宁_tile_000058_r1_c1_r00_c05</option>
+<option value="band_1_04">第 1 档 · 4/5 · 联合 9.26% · 西宁_tile_000075_pair01_r12_c03</option>
+<option value="band_1_05">第 1 档 · 5/5 · 联合 19.20% · 海东_tile_000126_r1_c1_r04_c01</option>
+</optgroup>
+<optgroup label="第 2 档：25–50%（共 448 张，展示 5 张）">
+<option value="band_2_01">第 2 档 · 1/5 · 联合 26.87% · 西宁_tile_000075_pair02_r12_c03</option>
+<option value="band_2_02">第 2 档 · 2/5 · 联合 30.92% · 西宁_tile_000058_r0_c1_r04_c04</option>
+<option value="band_2_03">第 2 档 · 3/5 · 联合 35.87% · 海东_tile_000141_r0_c0_r03_c00</option>
+<option value="band_2_04">第 2 档 · 4/5 · 联合 40.22% · 西宁_tile_000075_pair02_r01_c05</option>
+<option value="band_2_05">第 2 档 · 5/5 · 联合 46.75% · 西宁_tile_000075_pair02_r11_c01</option>
+</optgroup>
+<optgroup label="第 3 档：50–75%（共 190 张，展示 5 张）">
+<option value="band_3_01">第 3 档 · 1/5 · 联合 51.61% · 西宁_tile_000058_r1_c0_r07_c07</option>
+<option value="band_3_02">第 3 档 · 2/5 · 联合 54.21% · 西宁_tile_000075_pair01_r09_c02</option>
+<option value="band_3_03">第 3 档 · 3/5 · 联合 57.69% · 西宁_tile_000075_pair01_r05_c01</option>
+<option value="band_3_04">第 3 档 · 4/5 · 联合 63.53% · 西宁_tile_000058_r0_c1_r01_c07</option>
+<option value="band_3_05">第 3 档 · 5/5 · 联合 70.17% · 西宁_tile_000058_r1_c1_r03_c00</option>
+</optgroup>
+<optgroup label="第 4 档：75–100%（共 16 张，展示 5 张）">
+<option value="band_4_01">第 4 档 · 1/5 · 联合 75.72% · 西宁_tile_000075_pair01_r01_c01</option>
+<option value="band_4_02">第 4 档 · 2/5 · 联合 76.95% · 海东_tile_000126_r1_c0_r05_c03</option>
+<option value="band_4_03">第 4 档 · 3/5 · 联合 79.54% · 海东_tile_000029_r1_c0_r03_c01</option>
+<option value="band_4_04">第 4 档 · 4/5 · 联合 80.67% · 海东_tile_000126_r1_c1_r07_c03</option>
+<option value="band_4_05">第 4 档 · 5/5 · 联合 81.60% · 西宁_tile_000037_r06_c12</option>
+</optgroup></select>
+    <button id="previous" type="button">上一张</button><button id="next" type="button">下一张</button>
+    <span id="counter" aria-live="polite"></span>
+    <a id="separate" target="_blank" rel="noopener">单独打开</a>
+  </header>
+  <div class="meta">1,846 张验证集 · 四档数量：1026 / 448 / 190 / 16 张；联合 F1 未定义 166 张不参与分档。</div>
+  <div class="meta">全验证集联合 F1：R18 35.96%；SemDINO 39.31%。检出变化和两期地类均正确才计为正确。</div>
+  <iframe id="viewer" title="双期影像及 GT、R18、SemDINO 同步卷帘"></iframe>
+  <script>
+    const picker=document.getElementById('sample');
+    function show(){
+      const url='pages/'+picker.value+'.html';document.getElementById('viewer').src=url;
+      document.getElementById('separate').href=url;
+      document.getElementById('counter').textContent=(picker.selectedIndex+1)+' / '+picker.options.length;
+      document.getElementById('previous').disabled=picker.selectedIndex===0;
+      document.getElementById('next').disabled=picker.selectedIndex===picker.options.length-1;
+    }
+    picker.addEventListener('change',show);
+    document.getElementById('previous').addEventListener('click',()=>{if(picker.selectedIndex>0){picker.selectedIndex--;show();}});
+    document.getElementById('next').addEventListener('click',()=>{if(picker.selectedIndex<picker.options.length-1){picker.selectedIndex++;show();}});
+    show();
+  </script>
+</body>
+</html>
